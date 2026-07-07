@@ -1,0 +1,123 @@
+# =============================================================================
+# EKS Cluster Configuration for Draftable
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# ⚠️ BEFORE USING:
+# 1. Update the region to match your deployment
+# 2. Consider the VPC/subnet configuration notes below
+#
+# =============================================================================
+
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: draftable-eks
+  region: ap-southeast-2  # UPDATE: Your AWS region
+  # ---------------------------------------------------------------------------
+  # ⚠️ KUBERNETES VERSION:
+  # Use the highest available version. Kubernetes moves fast!
+  # Check available versions: aws eks describe-addon-versions --query 'addons[0].addonVersions[*].compatibilities[*].clusterVersion' --output text | sort -u
+  # As of Feb 2026, use 1.34 or 1.35 (1.29 is in extended support/outdated)
+  # ---------------------------------------------------------------------------
+  version: "1.31"  # UPDATE: Use latest stable version available
+
+# ---------------------------------------------------------------------------
+# VPC Configuration
+# ---------------------------------------------------------------------------
+# 
+# Option 1: Let eksctl create a new VPC (default - used below)
+# Option 2: Use existing VPC with specific subnets (see comments)
+#
+# For existing VPC deployments, uncomment and configure:
+#
+# vpc:
+#   id: "vpc-xxxxxxxxx"
+#   subnets:
+#     private:
+#       # Control plane subnets (backend)
+#       az1:
+#         id: "subnet-xxxxx"  # e.g., draftable-dev-ap1-eks-backend-az1-subnet
+#       az2:
+#         id: "subnet-xxxxx"  # e.g., draftable-dev-ap1-eks-backend-az2-subnet
+#     public:
+#       # Worker node subnets (edge/workload)
+#       az1:
+#         id: "subnet-xxxxx"  # e.g., draftable-dev-ap1-edge-workload-az1-subnet
+#       az2:
+#         id: "subnet-xxxxx"  # e.g., draftable-dev-ap1-edge-workload-az2-subnet
+#
+# ---------------------------------------------------------------------------
+
+vpc:
+  nat:
+    # Use Single NAT gateway to avoid Elastic IP limits (default is HighlyAvailable = 3)
+    gateway: Single
+
+# ---------------------------------------------------------------------------
+# IAM Configuration
+# ---------------------------------------------------------------------------
+iam:
+  # REQUIRED: Enable OIDC for IRSA (IAM Roles for Service Accounts)
+  # This allows pods to assume IAM roles for S3 access
+  withOIDC: true
+
+# ---------------------------------------------------------------------------
+# Addons Configuration
+# ---------------------------------------------------------------------------
+#
+# ⚠️ VPC CNI CONSIDERATION:
+#
+# The VPC CNI plugin assigns VPC IP addresses directly to pods.
+# This can consume many IP addresses from your subnets.
+#
+# For most Draftable deployments, the default CNI is sufficient.
+# Only enable VPC CNI if you have specific networking requirements.
+#
+# To disable VPC CNI (use default networking):
+# addons:
+#   - name: vpc-cni
+#     disable: true
+#
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Node Groups
+# ---------------------------------------------------------------------------
+managedNodeGroups:
+  - name: draftable-workers
+    instanceType: t3.large
+    desiredCapacity: 3
+    minSize: 2
+    maxSize: 5
+    volumeSize: 50
+    volumeType: gp3
+    
+    # Optional: Use specific subnets for worker nodes
+    # subnets:
+    #   - subnet-xxxxx  # edge-workload-az1
+    #   - subnet-xxxxx  # edge-workload-az2
+    
+    # Optional: Add labels for node selection
+    # labels:
+    #   role: draftable-worker
+    
+    # Optional: Add tags for cost allocation
+    # tags:
+    #   Environment: production
+    #   Application: draftable
+
+# ---------------------------------------------------------------------------
+# CloudWatch Logging
+# ---------------------------------------------------------------------------
+cloudWatch:
+  clusterLogging:
+    enableTypes:
+      - api
+      - audit
+      - authenticator
+      - controllerManager
+      - scheduler

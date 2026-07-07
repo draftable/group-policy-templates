@@ -1,0 +1,142 @@
+# =============================================================================
+# Compare Service Deployment
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# ⚠️ CRITICAL: Compare service does NOT support IRSA!
+#
+# The Compare service (.NET application) is missing the AWSSDK.SecurityToken
+# assembly required for AssumeRoleWithWebIdentity. Using IRSA will fail with:
+#   "Assembly AWSSDK.SecurityToken could not be found or loaded"
+#
+# Therefore, Compare uses:
+# - Service account: "default" (NOT draftable-s3-sa)
+# - Explicit AWS credentials from aws-s3-credentials secret
+#
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compare
+  namespace: draftable
+  labels:
+    app: compare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: compare
+  template:
+    metadata:
+      labels:
+        app: compare
+    spec:
+      # ⚠️ MUST use "default" service account - Compare doesn't support IRSA
+      serviceAccountName: default
+      containers:
+        - name: compare
+          image: draftable/apish-compare:latest
+          env:
+            - name: COMPARE_WORKERS_COUNT
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: COMPARE_WORKERS_COUNT
+            - name: JODCONVERTER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: JODCONVERTER_URL
+            - name: AMQP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AMQP_HOST
+            - name: AMQP_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AMQP_USER
+            - name: AMQP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AMQP_PORT
+            - name: AMQP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: amqp-password
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: REDIS_PORT
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: redis-password
+            # S3 Configuration
+            - name: FILE_STORAGE_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: FILE_STORAGE_TYPE
+            - name: S3_STORAGE_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: S3_STORAGE_BUCKET
+            - name: AWS_S3_REGION_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AWS_S3_REGION_NAME
+            # ⚠️ Explicit AWS credentials (required - IRSA not supported)
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+          volumeMounts:
+            # Required temp directory for comparison processing
+            - name: tmp-draftable
+              mountPath: /tmp/Draftable
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+      volumes:
+        - name: tmp-draftable
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compare
+  namespace: draftable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: compare

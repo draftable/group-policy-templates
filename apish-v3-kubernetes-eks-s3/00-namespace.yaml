@@ -1,0 +1,16 @@
+# =============================================================================
+# Namespace for Draftable deployment
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated.
+#    Review all values before applying to your cluster.
+#
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: draftable
+  labels:
+    app.kubernetes.io/name: draftable
+    app.kubernetes.io/component: namespace

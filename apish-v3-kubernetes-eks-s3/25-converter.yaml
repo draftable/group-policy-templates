@@ -1,0 +1,85 @@
+# =============================================================================
+# Converter Service (JODConverter / LibreOffice)
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# Converts Office documents (Word, Excel, PowerPoint) to PDF for comparison.
+# Not required for PDF-only comparisons.
+#
+# ⚠️ CRITICAL: LibreOffice Startup Behavior
+# ------------------------------------------
+# The converter uses LibreOffice (via JODConverter) which takes 60-90 seconds
+# to fully initialize. During startup you will see retry attempts in the logs
+# and "Office process died with exit code 81" warnings - this is NORMAL.
+#
+# The probes MUST use TCP socket checks (not HTTP) because:
+# - The JODConverter REST API returns 404 on root path and common health endpoints
+# - HTTP probes will fail and cause endless restart loops (400+ restarts)
+# - TCP probes simply verify port 8080 is listening (which it is once Tomcat starts)
+#
+# The initialDelaySeconds values are set high to allow LibreOffice time to start.
+# Do NOT reduce these values or the pod will enter CrashLoopBackOff.
+#
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: converter
+  namespace: draftable
+  labels:
+    app: converter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: converter
+  template:
+    metadata:
+      labels:
+        app: converter
+    spec:
+      containers:
+        - name: converter
+          image: draftable/apish-converter:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          # ⚠️ MUST use TCP probes - HTTP endpoints return 404 and cause CrashLoopBackOff
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: converter
+  namespace: draftable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: converter

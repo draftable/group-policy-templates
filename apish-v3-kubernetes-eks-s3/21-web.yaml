@@ -1,0 +1,177 @@
+# =============================================================================
+# Web Application Deployment
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# Uses IRSA (IAM Roles for Service Accounts) for S3 access.
+# Service account: draftable-s3-sa
+#
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: draftable
+  labels:
+    app: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      serviceAccountName: draftable-s3-sa
+      containers:
+        - name: web
+          image: draftable/apish-web:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: APP_MODE
+              value: "web"
+            - name: ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: ENV
+            - name: APP_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: APP_BASE_URL
+            - name: ALLOWED_HOSTS
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: ALLOWED_HOSTS
+            - name: CSRF_TRUSTED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: CSRF_TRUSTED_ORIGINS
+            - name: REQUIRE_HTTPS
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: REQUIRE_HTTPS
+            - name: RUNNING_ON_AWS
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: RUNNING_ON_AWS
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_HOST
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_USER
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: db-password
+            - name: AMQP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AMQP_HOST
+            - name: AMQP_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AMQP_USER
+            - name: AMQP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: amqp-password
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: REDIS_HOST
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: redis-password
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: django-secret-key
+            - name: DRAFTABLE_PRODUCT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: draftable-product-key
+            # S3 Configuration
+            - name: FILE_STORAGE_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: FILE_STORAGE_TYPE
+            - name: S3_STORAGE_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: S3_STORAGE_BUCKET
+            - name: AWS_S3_REGION_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AWS_S3_REGION_NAME
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/?healthcheck
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/?healthcheck
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: draftable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+  selector:
+    app: web

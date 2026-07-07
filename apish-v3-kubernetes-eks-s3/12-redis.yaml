@@ -1,0 +1,133 @@
+# =============================================================================
+# Redis Cache
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# ⚠️ DATA LOSS WARNING: If pods are restarted or rescheduled, you may lose
+#    all cached data and sessions. For production, use Amazon ElastiCache instead.
+#
+# ⚠️ PRODUCTION RECOMMENDATION:
+# 
+# For production deployments, consider using Amazon ElastiCache for Redis
+# instead of running Redis inside Kubernetes.
+#
+# Why?
+# - Kubernetes frequently tears down and recreates containers
+# - Redis requires high uptime for session/cache reliability
+# - ElastiCache provides automatic failover, backups, and patching
+# - Easier to manage and more reliable for stateful workloads
+#
+# This manifest is provided for:
+# - Development/testing environments
+# - Proof-of-concept deployments
+# - Scenarios where managed services are not available
+#
+# If using ElastiCache instead:
+# 1. Create ElastiCache Redis cluster
+# 2. Update ConfigMap with ElastiCache endpoint as REDIS_HOST
+# 3. Skip applying this manifest
+#
+# ---------------------------------------------------------------------------
+#
+# ⚠️ IMPORTANT: The service is named "redis-svc" (not "redis")
+#
+# Kubernetes automatically creates environment variables for services.
+# If named "redis", Kubernetes creates REDIS_PORT=tcp://ip:port
+# which conflicts with the application expecting REDIS_PORT=6379
+#
+# By naming it "redis-svc", the auto-created var is REDIS_SVC_PORT
+# which doesn't conflict with our explicit REDIS_PORT=6379
+#
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: draftable
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: draftable
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          command:
+            - redis-server
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: redis-password
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "250m"
+              memory: "512Mi"
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-data
+
+---
+# ⚠️ Service named "redis-svc" to avoid REDIS_PORT conflict
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-svc
+  namespace: draftable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis

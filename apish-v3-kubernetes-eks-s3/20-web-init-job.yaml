@@ -1,0 +1,81 @@
+# =============================================================================
+# Web Initialization Job
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# This job runs database migrations before the web application starts.
+# Wait for this job to complete before deploying web pods.
+#
+# =============================================================================
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: web-init
+  namespace: draftable
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      serviceAccountName: draftable-s3-sa
+      restartPolicy: OnFailure
+      containers:
+        - name: web-init
+          image: draftable/apish-web:latest
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          env:
+            - name: ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: ENV
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_HOST
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_USER
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: db-password
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: django-secret-key
+            # S3 Configuration
+            - name: FILE_STORAGE_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: FILE_STORAGE_TYPE
+            - name: S3_STORAGE_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: S3_STORAGE_BUCKET
+            - name: AWS_S3_REGION_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AWS_S3_REGION_NAME
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"

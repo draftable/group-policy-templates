@@ -1,0 +1,84 @@
+# =============================================================================
+# ConfigMap for Draftable with S3 Storage
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# ⚠️ IMPORTANT: Update the following values before applying:
+#     - APP_BASE_URL: Your application URL
+#     - SERVER_DNS: Your domain name
+#     - CSRF_TRUSTED_ORIGINS: Your HTTPS URL
+#     - S3_STORAGE_BUCKET: Your S3 bucket name
+#     - AWS_S3_REGION_NAME: Your AWS region
+#
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: draftable-config
+  namespace: draftable
+data:
+  # ---------------------------------------------------------------------------
+  # Environment Settings
+  # ---------------------------------------------------------------------------
+  ENV: "prod"
+  REQUIRE_HTTPS: "true"
+  RUNNING_ON_AWS: "true"
+  
+  # ---------------------------------------------------------------------------
+  # Application URLs
+  # ---------------------------------------------------------------------------
+  # ⚠️ UPDATE THESE VALUES for your domain
+  APP_BASE_URL: "https://your-domain.example.com"
+  SERVER_DNS: "your-domain.example.com"
+  CSRF_TRUSTED_ORIGINS: "https://your-domain.example.com"
+  
+  # ⚠️ ALLOWED_HOSTS set to "*" to allow ALB health checks
+  # The ALB uses the pod's internal IP for health checks, which would fail
+  # if we restricted to just the domain name.
+  ALLOWED_HOSTS: "*"
+  
+  # ---------------------------------------------------------------------------
+  # Database Configuration
+  # ---------------------------------------------------------------------------
+  DB_HOST: "postgresql"
+  DB_NAME: "draftable"
+  DB_USER: "postgres"
+  DB_PORT: "5432"
+  
+  # ---------------------------------------------------------------------------
+  # RabbitMQ Configuration
+  # ---------------------------------------------------------------------------
+  AMQP_HOST: "rabbitmq"
+  AMQP_USER: "draftable"
+  AMQP_PORT: "5672"
+  
+  # ---------------------------------------------------------------------------
+  # Redis Configuration
+  # ---------------------------------------------------------------------------
+  # ⚠️ NOTE: Service is named "redis-svc" (not "redis") to avoid conflict
+  # with Kubernetes auto-injected REDIS_PORT environment variable
+  REDIS_HOST: "redis-svc"
+  REDIS_PORT: "6379"
+  
+  # ---------------------------------------------------------------------------
+  # Compare Service Configuration
+  # ---------------------------------------------------------------------------
+  COMPARE_WORKERS_COUNT: "2"
+  JODCONVERTER_URL: "http://converter:8080/lool/convert-to/pdf"
+  
+  # ---------------------------------------------------------------------------
+  # S3 Storage Configuration
+  # ---------------------------------------------------------------------------
+  # ⚠️ CRITICAL: FILE_STORAGE_TYPE must be "s3" to enable S3 storage!
+  # Without this, the application will use local filesystem storage.
+  FILE_STORAGE_TYPE: "s3"
+  
+  # ⚠️ UPDATE: Your S3 bucket name
+  S3_STORAGE_BUCKET: "your-bucket-name"
+  
+  # ⚠️ UPDATE: Your AWS region
+  # NOTE: The variable name is AWS_S3_REGION_NAME (not AWS_REGION)
+  AWS_S3_REGION_NAME: "ap-southeast-2"

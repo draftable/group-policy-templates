@@ -1,0 +1,131 @@
+# =============================================================================
+# PostgreSQL Database
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# ⚠️ DATA LOSS WARNING: If pods are restarted or rescheduled, you may lose
+#    all database data. For production, use Amazon RDS instead.
+#
+# ⚠️ PRODUCTION RECOMMENDATION:
+# 
+# For production deployments, consider using Amazon RDS for PostgreSQL instead
+# of running PostgreSQL inside Kubernetes.
+#
+# Why?
+# - Kubernetes frequently tears down and recreates containers
+# - PostgreSQL requires high uptime and stable storage
+# - RDS provides automated backups, patching, and high availability
+# - Easier to manage and more reliable for stateful workloads
+#
+# This manifest is provided for:
+# - Development/testing environments
+# - Proof-of-concept deployments
+# - Scenarios where managed services are not available
+#
+# If using RDS instead:
+# 1. Create RDS PostgreSQL instance
+# 2. Update ConfigMap with RDS endpoint as DB_HOST
+# 3. Skip applying this manifest
+#
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data
+  namespace: draftable
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # ⚠️ NOTE: Using gp2 storage class (default on EKS)
+  # Change to gp3 if available and preferred
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: draftable
+  labels:
+    app: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_NAME
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: DB_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: db-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "draftable"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "draftable"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: postgresql-data
+          persistentVolumeClaim:
+            claimName: postgresql-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: draftable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgresql

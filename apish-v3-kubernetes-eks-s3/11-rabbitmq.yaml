@@ -1,0 +1,130 @@
+# =============================================================================
+# RabbitMQ Message Broker
+# =============================================================================
+#
+# ⚠️ NOTICE: This YAML file is deliberately templated and incomplete.
+#    You MUST replace all placeholder values before applying to your cluster.
+#
+# ⚠️ DATA LOSS WARNING: If pods are restarted or rescheduled, you may lose
+#    all queued messages. For production, use Amazon MQ instead.
+#
+# ⚠️ PRODUCTION RECOMMENDATION:
+# 
+# For production deployments, consider using Amazon MQ for RabbitMQ or
+# running RabbitMQ on a dedicated EC2 instance instead of inside Kubernetes.
+#
+# Why?
+# - Kubernetes frequently tears down and recreates containers
+# - RabbitMQ requires persistent message queues and stable connections
+# - Amazon MQ provides managed, highly available RabbitMQ
+# - External deployment provides more reliable message delivery
+#
+# This manifest is provided for:
+# - Development/testing environments
+# - Proof-of-concept deployments
+# - Scenarios where managed services are not available
+#
+# If using Amazon MQ or EC2 instead:
+# 1. Create Amazon MQ RabbitMQ broker OR deploy on EC2 with Docker Compose
+# 2. For EC2: See awscfn/rabbitmq-setup in Draftable repo for manual setup
+# 3. Update ConfigMap with broker endpoint as AMQP_HOST
+# 4. Skip applying this manifest
+#
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-data
+  namespace: draftable
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: draftable
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - containerPort: 5672
+              name: amqp
+            - containerPort: 15672
+              name: management
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: draftable-config
+                  key: AMQP_USER
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: draftable-secrets
+                  key: amqp-password
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: rabbitmq-data
+          persistentVolumeClaim:
+            claimName: rabbitmq-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: draftable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5672
+      targetPort: 5672
+      name: amqp
+    - port: 15672
+      targetPort: 15672
+      name: management
+  selector:
+    app: rabbitmq
